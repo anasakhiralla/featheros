@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=Search
+Comment=Universal search
+Exec=featheros-search
+Icon=featheros-saturn
+Categories=Utility;

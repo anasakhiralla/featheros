@@ -1,0 +1,5 @@
+#!/bin/bash
+read -r total avail < <(awk '/^MemTotal/{t=$2}/^MemAvailable/{a=$2}END{print t,a}' /proc/meminfo)
+used=$(( (total - avail) / 1024 ))
+pct=$(( (total - avail) * 100 / total ))
+printf '<txt>RAM %d MB</txt>\n<bar>%d</bar>\n<click>xfce4-taskmanager</click>\n<tool>%d%% of %d MB in use. Tap for the task manager.</tool>\n' "$used" "$pct" "$pct" $(( total / 1024 ))

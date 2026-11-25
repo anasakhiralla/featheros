@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=Software center
+Comment=Install and remove apps
+Exec=featheros-store
+Icon=system-software-install
+Categories=System;

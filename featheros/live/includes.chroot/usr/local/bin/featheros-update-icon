@@ -1,0 +1,13 @@
+#!/bin/bash
+n=$(cat /var/lib/featheros/updates 2>/dev/null || echo 0)
+if [ "${n:-0}" -gt 0 ] 2>/dev/null; then
+  mkdir -p "$HOME/.cache/featheros"
+  last=$(cat "$HOME/.cache/featheros/notified" 2>/dev/null || echo 0)
+  if [ "$last" != "$n" ]; then
+    notify-send -i system-software-update "$n updates ready" "Tap the update icon on the bar to install them." 2>/dev/null
+    echo "$n" > "$HOME/.cache/featheros/notified"
+  fi
+  printf '<img>/usr/share/featheros/update.svg</img>\n<tool>%s updates ready. Tap to install.</tool>\n<click>featheros-update</click>\n' "$n"
+else
+  echo "<txt></txt>"
+fi

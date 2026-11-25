@@ -1,0 +1,29 @@
+#!/bin/bash
+OUT=$(xrandr | awk '/ connected primary/{print $1; exit}')
+[ -n "$OUT" ] || OUT=$(xrandr | awk '/ connected/{print $1; exit}')
+apply(){
+  case "$1" in
+    normal)   R=normal;   M="1 0 0 0 1 0 0 0 1";;
+    left)     R=left;     M="0 -1 1 1 0 0 0 0 1";;
+    right)    R=right;    M="0 1 0 -1 0 1 0 0 1";;
+    inverted) R=inverted; M="-1 0 1 0 -1 1 0 0 1";;
+    *) return 1;;
+  esac
+  xrandr --output "$OUT" --rotate "$R"
+  xinput list --name-only | grep -iE 'touch|goodix|silead|elan|ft5|wacom|hid' | grep -viE 'keyboard|mouse|consumer|system control' | while read -r n; do
+    xinput set-prop "$n" "Coordinate Transformation Matrix" $M 2>/dev/null
+  done
+}
+case "${1:-auto}" in
+  auto)
+    command -v monitor-sensor >/dev/null || exit 0
+    monitor-sensor --accel 2>/dev/null | while read -r line; do
+      case "$line" in
+        *"orientation changed: normal"*)    apply normal;;
+        *"orientation changed: bottom-up"*) apply inverted;;
+        *"orientation changed: left-up"*)   apply left;;
+        *"orientation changed: right-up"*)  apply right;;
+      esac
+    done ;;
+  *) apply "$1" ;;
+esac

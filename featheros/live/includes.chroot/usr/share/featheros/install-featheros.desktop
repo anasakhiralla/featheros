@@ -1,0 +1,6 @@
+[Desktop Entry]
+Type=Application
+Name=Install FeatherOS
+Exec=sudo -E calamares
+Icon=system-software-install
+Terminal=false

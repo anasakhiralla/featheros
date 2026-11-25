@@ -1,0 +1,108 @@
+#!/usr/bin/env python3
+import os, time, select, subprocess, configparser
+from evdev import InputDevice, ecodes, list_devices
+
+CONF = os.path.expanduser('~/.config/featheros/touch.conf')
+
+def load():
+    c = configparser.ConfigParser()
+    c.read(CONF)
+    s = c['longpress'] if 'longpress' in c else {}
+    try:
+        delay = float(s.get('delay', '0.6'))
+    except ValueError:
+        delay = 0.6
+    skip = [x.strip().lower() for x in s.get('skip_classes', '').split(',') if x.strip()]
+    return s.get('enabled', '1') == '1', delay, skip
+
+def active_class():
+    try:
+        out = subprocess.run(['xdotool', 'getwindowfocus', 'getwindowclassname'],
+                             capture_output=True, text=True, timeout=1).stdout
+        return out.strip().lower()
+    except Exception:
+        return ''
+
+def find_touch():
+    found = []
+    for path in list_devices():
+        try:
+            d = InputDevice(path)
+            caps = d.capabilities()
+            absc = dict(caps.get(ecodes.EV_ABS, []))
+            keys = caps.get(ecodes.EV_KEY, [])
+            if ecodes.ABS_MT_POSITION_X in absc and ecodes.BTN_TOUCH in keys and ecodes.BTN_TOOL_PEN not in keys:
+                rng = absc[ecodes.ABS_MT_POSITION_X].max - absc[ecodes.ABS_MT_POSITION_X].min
+                found.append((d, max(rng, 1)))
+        except Exception:
+            pass
+    return found
+
+class State:
+    def __init__(self, rng):
+        self.fingers = 0
+        self.start = None
+        self.x0 = self.y0 = None
+        self.x = self.y = None
+        self.fired = False
+        self.thresh = rng * 0.02
+
+    def reset(self):
+        self.start = None
+        self.x0 = self.y0 = None
+        self.fired = False
+
+def main():
+    devices = {}
+    while not devices:
+        for d, rng in find_touch():
+            devices[d.fd] = (d, State(rng))
+        if not devices:
+            time.sleep(10)
+    while True:
+        enabled, delay, skip = load()
+        r, _, _ = select.select([d for d, _ in devices.values()], [], [], 0.05)
+        for dev in r:
+            st = devices[dev.fd][1]
+            try:
+                events = list(dev.read())
+            except OSError:
+                return
+            for e in events:
+                if e.type == ecodes.EV_ABS:
+                    if e.code == ecodes.ABS_MT_TRACKING_ID:
+                        if e.value == -1:
+                            st.fingers = max(0, st.fingers - 1)
+                            if st.fingers == 0:
+                                st.reset()
+                        else:
+                            st.fingers += 1
+                            if st.fingers == 1:
+                                st.start = time.time()
+                                st.fired = False
+                                st.x0 = st.y0 = None
+                            else:
+                                st.start = None
+                    elif e.code == ecodes.ABS_MT_POSITION_X:
+                        st.x = e.value
+                        if st.x0 is None:
+                            st.x0 = e.value
+                        elif abs(e.value - st.x0) > st.thresh:
+                            st.start = None
+                    elif e.code == ecodes.ABS_MT_POSITION_Y:
+                        st.y = e.value
+                        if st.y0 is None:
+                            st.y0 = e.value
+                        elif abs(e.value - st.y0) > st.thresh:
+                            st.start = None
+        if not enabled:
+            continue
+        now = time.time()
+        for _, st in devices.values():
+            if st.start and not st.fired and st.fingers == 1 and now - st.start >= delay:
+                st.fired = True
+                if active_class() not in skip:
+                    subprocess.run(['xdotool', 'mouseup', '1', 'click', '3'])
+
+if __name__ == '__main__':
+    main()

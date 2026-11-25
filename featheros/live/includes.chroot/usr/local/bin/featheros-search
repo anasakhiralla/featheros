@@ -1,0 +1,255 @@
+#!/usr/bin/env python3
+import os, re, ast, json, time, shutil, operator, threading, subprocess, urllib.parse
+import gi
+gi.require_version('Gtk', '3.0')
+gi.require_version('Gdk', '3.0')
+from gi.repository import Gtk, Gdk, Gio, GLib
+
+HOME = os.path.expanduser('~')
+CACHE = os.path.join(HOME, '.cache', 'featheros', 'files.json')
+SETTINGS = [
+    ('Wifi', 'nm-connection-editor', 'network-wireless'),
+    ('Bluetooth', 'blueman-manager', 'bluetooth'),
+    ('Sound', 'pavucontrol', 'audio-volume-high'),
+    ('Dock, wallpaper, colors and touch', 'featheros-settings', 'preferences-desktop'),
+    ('Software center', 'featheros-store', 'system-software-install'),
+    ('Update the system', 'featheros-update', 'system-software-update'),
+    ('Touch screen calibration', 'xinput_calibrator', 'input-tablet'),
+    ('Task manager', 'xfce4-taskmanager', 'utilities-system-monitor'),
+]
+OPS = {ast.Add: operator.add, ast.Sub: operator.sub, ast.Mult: operator.mul,
+       ast.Div: operator.truediv, ast.Pow: operator.pow, ast.Mod: operator.mod,
+       ast.FloorDiv: operator.floordiv, ast.USub: operator.neg}
+
+def ev(n):
+    if isinstance(n, ast.Expression):
+        return ev(n.body)
+    if isinstance(n, ast.Constant) and isinstance(n.value, (int, float)):
+        return n.value
+    if isinstance(n, ast.BinOp) and type(n.op) in OPS:
+        a, b = ev(n.left), ev(n.right)
+        if isinstance(n.op, ast.Pow) and abs(b) > 100:
+            raise ValueError
+        return OPS[type(n.op)](a, b)
+    if isinstance(n, ast.UnaryOp) and type(n.op) in OPS:
+        return OPS[type(n.op)](ev(n.operand))
+    raise ValueError
+
+def calc(q):
+    if not re.fullmatch(r'[\d\s\.\+\-\*/%\(\)\^x]+', q) or not re.search(r'\d', q) or not re.search(r'[\+\-\*/%\^x]', q.strip('-+ ')):
+        return None
+    try:
+        v = ev(ast.parse(q.replace('^', '**').replace('x', '*'), mode='eval'))
+        return str(round(v, 8)).rstrip('0').rstrip('.') if isinstance(v, float) else str(v)
+    except Exception:
+        return None
+
+def scan_files():
+    out = []
+    for root, dirs, files in os.walk(HOME):
+        dirs[:] = [d for d in dirs if not d.startswith('.') and d not in ('node_modules', '__pycache__', 'venv')]
+        depth = root[len(HOME):].count(os.sep)
+        if depth >= 6:
+            dirs[:] = []
+        for f in files + dirs:
+            if not f.startswith('.'):
+                out.append(os.path.join(root, f))
+        if len(out) > 60000:
+            break
+    os.makedirs(os.path.dirname(CACHE), exist_ok=True)
+    with open(CACHE, 'w') as fh:
+        json.dump(out, fh)
+    return out
+
+def load_files():
+    try:
+        if time.time() - os.path.getmtime(CACHE) < 600:
+            with open(CACHE) as fh:
+                return json.load(fh)
+    except Exception:
+        pass
+    return None
+
+def copy(text):
+    subprocess.Popen(['sh', '-c', 'printf %s "$0" | xclip -selection clipboard', text], start_new_session=True)
+
+def run(cmd):
+    subprocess.Popen(cmd, shell=isinstance(cmd, str), start_new_session=True)
+
+class Search(Gtk.Application):
+    def __init__(self):
+        super().__init__(application_id='org.featheros.Search')
+        self.win = None
+        self.files = load_files()
+        self.apps = []
+
+    def do_activate(self):
+        if self.win:
+            self.win.destroy()
+            return
+        self.apps = [a for a in Gio.AppInfo.get_all() if a.should_show()]
+        self.apps.sort(key=lambda a: a.get_name().lower())
+        if self.files is None:
+            threading.Thread(target=self.bg_scan, daemon=True).start()
+        self.build()
+
+    def bg_scan(self):
+        self.files = scan_files()
+
+    def build(self):
+        w = Gtk.ApplicationWindow(application=self)
+        self.win = w
+        w.set_decorated(False)
+        w.set_keep_above(True)
+        w.set_skip_taskbar_hint(True)
+        w.connect('destroy', self.on_destroy)
+        scr = Gdk.Display.get_default().get_monitor(0).get_geometry()
+        width = min(580, scr.width - 20)
+        w.set_default_size(width, 420)
+        w.move(scr.x + (scr.width - width) // 2, scr.y + max(20, scr.height // 12))
+        css = Gtk.CssProvider()
+        css.load_from_data(b'window { border: 1px solid alpha(currentColor, 0.25); } entry { font-size: 15pt; min-height: 44px; } row { min-height: 46px; }')
+        Gtk.StyleContext.add_provider_for_screen(Gdk.Screen.get_default(), css, Gtk.STYLE_PROVIDER_PRIORITY_USER)
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
+        box.set_border_width(8)
+        self.entry = Gtk.SearchEntry()
+        self.entry.set_placeholder_text('Search apps, files, settings, math and the web')
+        self.entry.connect('search-changed', self.on_changed)
+        self.entry.connect('key-press-event', self.on_key)
+        box.pack_start(self.entry, False, False, 0)
+        sc = Gtk.ScrolledWindow()
+        sc.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+        self.list = Gtk.ListBox()
+        self.list.set_header_func(self.header)
+        self.list.connect('row-activated', lambda lb, row: self.activate(row))
+        sc.add(self.list)
+        box.pack_start(sc, True, True, 0)
+        w.add(box)
+        w.connect('focus-out-event', self.on_focus_out)
+        w.show_all()
+        self.populate('')
+
+    def on_destroy(self, *_):
+        self.win = None
+        self.quit()
+
+    def on_focus_out(self, *_):
+        GLib.timeout_add(200, self.close_if_unfocused)
+        return False
+
+    def close_if_unfocused(self):
+        if self.win and not self.win.is_active():
+            self.win.destroy()
+        return False
+
+    def header(self, row, before):
+        if before is None or getattr(before, 'section', None) != row.section:
+            lab = Gtk.Label(label=row.section, xalign=0)
+            lab.get_style_context().add_class('dim-label')
+            lab.set_margin_start(10)
+            lab.set_margin_top(6)
+            row.set_header(lab)
+        else:
+            row.set_header(None)
+
+    def add(self, section, title, sub, icon, action):
+        row = Gtk.ListBoxRow()
+        row.section = section
+        row.action = action
+        h = Gtk.Box(spacing=12)
+        h.set_border_width(6)
+        img = Gtk.Image()
+        if isinstance(icon, Gio.Icon):
+            img.set_from_gicon(icon, Gtk.IconSize.LARGE_TOOLBAR)
+        else:
+            img.set_from_icon_name(icon, Gtk.IconSize.LARGE_TOOLBAR)
+        img.set_pixel_size(28)
+        h.pack_start(img, False, False, 0)
+        v = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        t = Gtk.Label(label=title, xalign=0)
+        t.set_ellipsize(3)
+        v.pack_start(t, False, False, 0)
+        if sub:
+            s = Gtk.Label(label=sub, xalign=0)
+            s.set_ellipsize(1)
+            s.get_style_context().add_class('dim-label')
+            v.pack_start(s, False, False, 0)
+        h.pack_start(v, True, True, 0)
+        row.add(h)
+        self.list.add(row)
+
+    def populate(self, q):
+        for c in self.list.get_children():
+            self.list.remove(c)
+        ql = q.lower().strip()
+        if ql:
+            m = calc(q)
+            if m is not None:
+                self.add('Math', '= ' + m, 'Press Enter to copy the answer', 'accessories-calculator', lambda m=m: copy(m))
+        matched = []
+        for a in self.apps:
+            name = a.get_name().lower()
+            hay = name + ' ' + (a.get_generic_name() or '').lower() + ' ' + ' '.join(getattr(a, 'get_keywords', lambda: [])() or []).lower()
+            if not ql or ql in hay:
+                matched.append((0 if name.startswith(ql) else 1, a))
+        matched.sort(key=lambda t: t[0])
+        for _, a in matched[:(10 if not ql else 6)]:
+            self.add('Apps', a.get_name(), a.get_description() or '', a.get_icon() or 'application-x-executable', lambda a=a: a.launch([], None))
+        if ql:
+            for name, cmd, icon in SETTINGS:
+                if ql in name.lower():
+                    self.add('Settings', name, '', icon, lambda c=cmd: run(c))
+            shown = 0
+            for p in (self.files or []):
+                if shown >= 6:
+                    break
+                if ql in os.path.basename(p).lower():
+                    icon = Gio.content_type_get_icon(Gio.content_type_guess(p, None)[0])
+                    self.add('Files', os.path.basename(p), os.path.dirname(p).replace(HOME, '~'), icon, lambda p=p: Gio.AppInfo.launch_default_for_uri('file://' + urllib.parse.quote(p), None))
+                    shown += 1
+            first = q.strip().split()[0] if q.strip() else ''
+            if q.startswith('>') or (first and shutil.which(first)):
+                cmd = q[1:].strip() if q.startswith('>') else q.strip()
+                self.add('Run', 'Run command: ' + cmd, 'Opens in a terminal', 'utilities-terminal', lambda c=cmd: run(['xfce4-terminal', '--hold', '-x', 'bash', '-lc', c]))
+            if re.match(r'^(https?://|www\.)\S+$', q.strip()):
+                url = q.strip() if q.startswith('http') else 'https://' + q.strip()
+                self.add('Web', 'Open ' + url, '', 'web-browser', lambda u=url: run(['xdg-open', u]))
+            self.add('Web', 'Search the web for "' + q.strip() + '"', 'DuckDuckGo', 'edit-find', lambda: run(['xdg-open', 'https://duckduckgo.com/?q=' + urllib.parse.quote(q.strip())]))
+        self.list.show_all()
+        rows = self.list.get_children()
+        if rows:
+            self.list.select_row(rows[0])
+
+    def on_changed(self, entry):
+        self.populate(entry.get_text())
+
+    def on_key(self, entry, ev):
+        key = ev.keyval
+        if key == Gdk.KEY_Escape:
+            self.win.destroy()
+            return True
+        rows = self.list.get_children()
+        if not rows:
+            return False
+        cur = self.list.get_selected_row()
+        i = rows.index(cur) if cur in rows else 0
+        if key == Gdk.KEY_Down:
+            self.list.select_row(rows[min(i + 1, len(rows) - 1)])
+            return True
+        if key == Gdk.KEY_Up:
+            self.list.select_row(rows[max(i - 1, 0)])
+            return True
+        if key in (Gdk.KEY_Return, Gdk.KEY_KP_Enter):
+            if cur:
+                self.activate(cur)
+            return True
+        return False
+
+    def activate(self, row):
+        try:
+            row.action()
+        finally:
+            self.win.destroy()
+
+if __name__ == '__main__':
+    Search().run()

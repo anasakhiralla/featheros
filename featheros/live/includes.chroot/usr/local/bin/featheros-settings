@@ -1,0 +1,240 @@
+#!/usr/bin/env python3
+import os, subprocess, configparser
+import gi
+gi.require_version('Gtk', '3.0')
+gi.require_version('Gdk', '3.0')
+from gi.repository import Gtk, Gdk
+
+CFG = os.path.expanduser('~/.config/featheros')
+WALLS = [('Blue', 'saturn-blue'), ('Violet', 'saturn-violet'), ('Forest', 'saturn-forest')]
+ACCENTS = [('Blue', '#2E6F95'), ('Teal', '#0F6E56'), ('Purple', '#534AB7'), ('Orange', '#BA7517'),
+           ('Pink', '#993556'), ('Red', '#A32D2D'), ('Green', '#3B6D11')]
+
+def ini(name):
+    c = configparser.ConfigParser()
+    c.read(os.path.join(CFG, name))
+    return c
+
+def save(name, c):
+    os.makedirs(CFG, exist_ok=True)
+    with open(os.path.join(CFG, name), 'w') as fh:
+        c.write(fh)
+
+def sh(*a):
+    subprocess.Popen(list(a), start_new_session=True)
+
+def page(title):
+    b = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
+    b.set_border_width(16)
+    l = Gtk.Label(xalign=0)
+    l.set_markup('<b>' + title + '</b>')
+    b.pack_start(l, False, False, 0)
+    return b
+
+def row(label, widget):
+    h = Gtk.Box(spacing=12)
+    h.pack_start(Gtk.Label(label=label, xalign=0), True, True, 0)
+    h.pack_end(widget, False, False, 0)
+    return h
+
+def radios(options, current, cb):
+    box = Gtk.Box(spacing=6)
+    first = None
+    for key, text in options:
+        r = Gtk.RadioButton.new_with_label_from_widget(first, text)
+        r.set_mode(False)
+        r.set_size_request(86, 40)
+        if first is None:
+            first = r
+        r.set_active(key == current)
+        r.connect('toggled', lambda w, k=key: w.get_active() and cb(k))
+        box.pack_start(r, False, False, 0)
+    return box
+
+class Settings(Gtk.Window):
+    def __init__(self):
+        super().__init__(title='FeatherOS Settings')
+        self.set_default_size(720, 520)
+        stack = Gtk.Stack()
+        side = Gtk.StackSidebar()
+        side.set_stack(stack)
+        root = Gtk.Box()
+        root.pack_start(side, False, False, 0)
+        root.pack_start(stack, True, True, 0)
+        self.add(root)
+        stack.add_titled(self.appearance(), 'a', 'Appearance')
+        stack.add_titled(self.dock(), 'd', 'Dock')
+        stack.add_titled(self.wallpaper(), 'w', 'Wallpaper')
+        stack.add_titled(self.touch(), 't', 'Touch and screen')
+        stack.add_titled(self.notes(), 'n', 'Notifications')
+        self.connect('destroy', Gtk.main_quit)
+        self.show_all()
+
+    def appearance(self):
+        c = ini('appearance.conf')
+        self.acc = c.get('appearance', 'accent', fallback='#2E6F95')
+        self.mode = c.get('appearance', 'mode', fallback='light')
+        p = page('Accent color')
+        fb = Gtk.FlowBox()
+        fb.set_max_children_per_line(8)
+        fb.set_selection_mode(Gtk.SelectionMode.NONE)
+        for name, hexv in ACCENTS:
+            b = Gtk.Button()
+            b.set_size_request(48, 48)
+            b.set_tooltip_text(name)
+            css = Gtk.CssProvider()
+            css.load_from_data(('button { background: %s; background-image: none; border-radius: 24px; }' % hexv).encode())
+            b.get_style_context().add_provider(css, Gtk.STYLE_PROVIDER_PRIORITY_USER)
+            b.connect('clicked', lambda w, h=hexv: self.set_accent(h))
+            fb.add(b)
+        p.pack_start(fb, False, False, 0)
+        cb = Gtk.ColorButton()
+        rgba = Gdk.RGBA()
+        rgba.parse(self.acc)
+        cb.set_rgba(rgba)
+        cb.connect('color-set', self.on_custom)
+        p.pack_start(row('Pick any color', cb), False, False, 0)
+        sw = Gtk.Switch()
+        sw.set_active(self.mode == 'dark')
+        sw.connect('state-set', lambda w, s: self.set_mode('dark' if s else 'light'))
+        p.pack_start(row('Dark mode', sw), False, False, 0)
+        return p
+
+    def set_accent(self, h):
+        self.acc = h
+        sh('featheros-accent', h, self.mode)
+
+    def on_custom(self, cb):
+        r = cb.get_rgba()
+        self.set_accent('#%02X%02X%02X' % (int(r.red * 255), int(r.green * 255), int(r.blue * 255)))
+
+    def set_mode(self, m):
+        self.mode = m
+        sh('featheros-accent', self.acc, m)
+        return False
+
+    def dock(self):
+        c = ini('dock.conf')
+        self.pos = c.get('dock', 'position', fallback='bottom')
+        self.al = c.get('dock', 'align', fallback='center')
+        self.size = c.getint('dock', 'size', fallback=48)
+        self.len = c.getint('dock', 'length', fallback=72)
+        p = page('Dock position')
+        p.pack_start(radios([('bottom', 'Bottom'), ('top', 'Top'), ('left', 'Left'), ('right', 'Right')], self.pos, self.set_pos), False, False, 0)
+        l = Gtk.Label(xalign=0)
+        l.set_markup('<b>Alignment</b>')
+        p.pack_start(l, False, False, 6)
+        p.pack_start(radios([('start', 'Start'), ('center', 'Center'), ('end', 'End')], self.al, self.set_al), False, False, 0)
+        s1 = Gtk.Scale.new_with_range(Gtk.Orientation.HORIZONTAL, 36, 80, 2)
+        s1.set_value(self.size)
+        s1.set_size_request(260, -1)
+        s1.connect('button-release-event', lambda w, e: self.set_size(int(w.get_value())))
+        s1.connect('key-release-event', lambda w, e: self.set_size(int(w.get_value())))
+        p.pack_start(row('Bar thickness', s1), False, False, 0)
+        s2 = Gtk.Scale.new_with_range(Gtk.Orientation.HORIZONTAL, 30, 100, 5)
+        s2.set_value(self.len)
+        s2.set_size_request(260, -1)
+        s2.connect('button-release-event', lambda w, e: self.set_len(int(w.get_value())))
+        s2.connect('key-release-event', lambda w, e: self.set_len(int(w.get_value())))
+        p.pack_start(row('Bar length (percent)', s2), False, False, 0)
+        return p
+
+    def apply_dock(self):
+        sh('featheros-dock', self.pos, self.al, str(self.size), str(self.len))
+
+    def set_pos(self, v):
+        self.pos = v
+        self.apply_dock()
+
+    def set_al(self, v):
+        self.al = v
+        self.apply_dock()
+
+    def set_size(self, v):
+        self.size = v
+        self.apply_dock()
+        return False
+
+    def set_len(self, v):
+        self.len = v
+        self.apply_dock()
+        return False
+
+    def wallpaper(self):
+        p = page('Wallpaper')
+        h = Gtk.Box(spacing=10)
+        for name, f in WALLS:
+            b = Gtk.Button(label=name)
+            b.set_size_request(100, 60)
+            b.connect('clicked', lambda w, f=f: sh('featheros-wallpaper', '/usr/share/backgrounds/featheros/%s.svg' % f))
+            h.pack_start(b, False, False, 0)
+        p.pack_start(h, False, False, 0)
+        fc = Gtk.FileChooserButton(title='Choose a picture')
+        flt = Gtk.FileFilter()
+        flt.set_name('Pictures')
+        for pat in ('*.jpg', '*.jpeg', '*.png', '*.webp', '*.svg', '*.JPG', '*.JPEG', '*.PNG'):
+            flt.add_pattern(pat)
+        fc.add_filter(flt)
+        fc.connect('file-set', lambda w: sh('featheros-wallpaper', w.get_filename()))
+        p.pack_start(row('Use your own JPG or PNG', fc), False, False, 0)
+        return p
+
+    def touch(self):
+        c = ini('touch.conf')
+        if 'longpress' not in c:
+            c['longpress'] = {'enabled': '1', 'delay': '0.6', 'skip_classes': 'firefox-esr,Firefox,firefox'}
+        self.tc = c
+        p = page('Long press as right click')
+        sw = Gtk.Switch()
+        sw.set_active(c['longpress'].get('enabled', '1') == '1')
+        sw.connect('state-set', self.on_lp)
+        p.pack_start(row('Hold a finger to right click', sw), False, False, 0)
+        sc = Gtk.Scale.new_with_range(Gtk.Orientation.HORIZONTAL, 0.3, 1.5, 0.1)
+        sc.set_value(float(c['longpress'].get('delay', '0.6')))
+        sc.set_size_request(260, -1)
+        sc.connect('value-changed', self.on_delay)
+        p.pack_start(row('Hold time (seconds)', sc), False, False, 0)
+        l = Gtk.Label(xalign=0)
+        l.set_markup('<b>Screen rotation</b>')
+        p.pack_start(l, False, False, 6)
+        h = Gtk.Box(spacing=6)
+        for key, text in (('auto', 'Auto'), ('normal', 'Normal'), ('left', 'Left'), ('right', 'Right'), ('inverted', 'Upside down')):
+            b = Gtk.Button(label=text)
+            b.set_size_request(86, 40)
+            b.connect('clicked', lambda w, k=key: sh('featheros-rotate', k))
+            h.pack_start(b, False, False, 0)
+        p.pack_start(h, False, False, 0)
+        cal = Gtk.Button(label='Calibrate touch screen')
+        cal.set_size_request(-1, 40)
+        cal.connect('clicked', lambda w: sh('xinput_calibrator'))
+        p.pack_start(cal, False, False, 6)
+        return p
+
+    def on_lp(self, w, state):
+        self.tc['longpress']['enabled'] = '1' if state else '0'
+        save('touch.conf', self.tc)
+        return False
+
+    def on_delay(self, w):
+        self.tc['longpress']['delay'] = '%.1f' % w.get_value()
+        save('touch.conf', self.tc)
+
+    def notes(self):
+        p = page('Notifications')
+        sw = Gtk.Switch()
+        sw.connect('state-set', lambda w, s: (sh('xfconf-query', '-c', 'xfce4-notifyd', '-p', '/do-not-disturb', '-n', '-t', 'bool', '-s', 'true' if s else 'false'), False)[1])
+        p.pack_start(row('Do not disturb', sw), False, False, 0)
+        cb = Gtk.ComboBoxText()
+        for t in ('Top left', 'Bottom left', 'Bottom right', 'Top right'):
+            cb.append_text(t)
+        cb.set_active(3)
+        cb.connect('changed', lambda w: sh('xfconf-query', '-c', 'xfce4-notifyd', '-p', '/notify-location', '-n', '-t', 'uint', '-s', str(w.get_active())))
+        p.pack_start(row('Where they appear', cb), False, False, 0)
+        up = Gtk.Button(label='Check for updates now')
+        up.set_size_request(-1, 40)
+        up.connect('clicked', lambda w: sh('featheros-update'))
+        p.pack_start(up, False, False, 10)
+        return p
+
+Settings()
+Gtk.main()

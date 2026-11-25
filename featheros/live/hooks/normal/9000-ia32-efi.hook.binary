@@ -1,0 +1,32 @@
+#!/bin/sh
+# Adds 32-bit UEFI boot support (needed by Atom tablets such as the RCA Cambio)
+# to a 64-bit ISO, by putting bootia32.efi next to bootx64.efi in the EFI image.
+set -e
+IMG=binary/boot/grub/efi.img
+if [ ! -f "$IMG" ]; then
+  echo "ia32 hook: $IMG not found, skipping"
+  exit 0
+fi
+T=$(mktemp -d)
+mkdir -p "$T/efi" "$T/emb"
+cat > "$T/emb/embed.cfg" <<'CFG'
+search --no-floppy --file --set=root /.disk/info
+configfile ($root)/boot/grub/grub.cfg
+CFG
+grub-mkstandalone -O i386-efi -o "$T/bootia32.efi" \
+  --modules="part_gpt part_msdos fat iso9660 search search_fs_file search_label normal linux configfile echo all_video gfxterm gfxmenu png jpeg font gzio" \
+  "boot/grub/grub.cfg=$T/emb/embed.cfg"
+mcopy -s -i "$IMG" "::/*" "$T/efi/"
+EFIDIR=$(find "$T/efi" -maxdepth 1 -iname efi | head -1)
+[ -n "$EFIDIR" ] || { mkdir -p "$T/efi/EFI/boot"; EFIDIR="$T/efi/EFI"; }
+BOOTDIR=$(find "$EFIDIR" -maxdepth 1 -iname boot | head -1)
+[ -n "$BOOTDIR" ] || { mkdir -p "$EFIDIR/boot"; BOOTDIR="$EFIDIR/boot"; }
+cp "$T/bootia32.efi" "$BOOTDIR/bootia32.efi"
+KB=$(du -sk "$T/efi" | cut -f1)
+MB=$(( KB / 1024 + 12 ))
+dd if=/dev/zero of="$T/new.img" bs=1M count=$MB status=none
+mkfs.vfat "$T/new.img" >/dev/null
+mcopy -s -i "$T/new.img" "$T"/efi/* ::/
+cp "$T/new.img" "$IMG"
+echo "ia32 hook: added bootia32.efi"
+rm -rf "$T"

@@ -1,0 +1,8 @@
+[org/onboard]
+start-minimized=true
+
+[org/onboard/auto-show]
+enabled=true
+
+[org/onboard/window]
+force-to-top=true

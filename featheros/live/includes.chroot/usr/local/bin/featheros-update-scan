@@ -1,0 +1,6 @@
+#!/bin/bash
+mkdir -p /var/lib/featheros
+apt-get update -qq >/dev/null 2>&1 || exit 0
+n=$(apt-get -s dist-upgrade 2>/dev/null | grep -c '^Inst ')
+echo "$n" > /var/lib/featheros/updates
+chmod 644 /var/lib/featheros/updates

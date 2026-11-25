@@ -1,0 +1,25 @@
+#!/bin/bash
+POS="${1:-bottom}"; AL="${2:-center}"; SIZE="${3:-48}"; LEN="${4:-72}"
+read -r SW SH < <(xrandr --current | sed -n 's/.*current \([0-9]*\) x \([0-9]*\).*/\1 \2/p' | head -1)
+[ -n "$SW" ] || { echo "Cannot read the screen size"; exit 1; }
+M=10
+P=/panels/panel-1
+set_p(){ xfconf-query -c xfce4-panel -p "$P/$1" -n -t "$2" -s "$3"; }
+case "$POS" in
+  bottom|top)
+    W=$(( SW * LEN / 100 ))
+    case "$AL" in start) X=$M;; end) X=$(( SW - W - M ));; *) X=$(( (SW - W) / 2 ));; esac
+    if [ "$POS" = bottom ]; then Y=$(( SH - SIZE - 8 )); else Y=8; fi
+    set_p mode uint 0 ;;
+  left|right)
+    H=$(( SH * LEN / 100 ))
+    case "$AL" in start) Y=$M;; end) Y=$(( SH - H - M ));; *) Y=$(( (SH - H) / 2 ));; esac
+    if [ "$POS" = left ]; then X=8; else X=$(( SW - SIZE - 8 )); fi
+    set_p mode uint 1 ;;
+  *) echo "Usage: featheros-dock bottom|top|left|right start|center|end [size] [length%]"; exit 1;;
+esac
+set_p size uint "$SIZE"
+set_p length uint "$LEN"
+set_p position string "p=0;x=$X;y=$Y"
+mkdir -p "$HOME/.config/featheros"
+printf '[dock]\nposition=%s\nalign=%s\nsize=%s\nlength=%s\n' "$POS" "$AL" "$SIZE" "$LEN" > "$HOME/.config/featheros/dock.conf"

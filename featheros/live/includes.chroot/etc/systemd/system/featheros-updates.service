@@ -1,0 +1,6 @@
+[Unit]
+Description=FeatherOS update check
+After=network-online.target
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/featheros-update-scan

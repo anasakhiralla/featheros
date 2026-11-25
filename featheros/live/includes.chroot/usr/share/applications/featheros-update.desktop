@@ -1,0 +1,6 @@
+[Desktop Entry]
+Type=Application
+Name=Update the system
+Exec=featheros-update
+Icon=system-software-update
+Categories=System;

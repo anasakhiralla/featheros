@@ -1,0 +1,6 @@
+[Desktop Entry]
+Type=Application
+Name=FeatherOS long press
+Exec=featheros-longpress
+OnlyShowIn=XFCE;
+X-GNOME-Autostart-enabled=true

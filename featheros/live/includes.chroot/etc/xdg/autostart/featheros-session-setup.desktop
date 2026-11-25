@@ -1,0 +1,6 @@
+[Desktop Entry]
+Type=Application
+Name=FeatherOS first run
+Exec=featheros-session-setup
+OnlyShowIn=XFCE;
+X-GNOME-Autostart-enabled=true

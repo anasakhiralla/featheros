@@ -1,0 +1,9 @@
+[Unit]
+Description=Check for FeatherOS updates daily
+[Timer]
+OnBootSec=10min
+OnCalendar=daily
+Persistent=true
+RandomizedDelaySec=30min
+[Install]
+WantedBy=timers.target

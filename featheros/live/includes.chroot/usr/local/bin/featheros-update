@@ -1,0 +1,7 @@
+#!/bin/bash
+exec xfce4-terminal --title "FeatherOS update" -x bash -c '
+echo "Updating FeatherOS..."
+sudo sh -c "apt-get update && apt-get -y dist-upgrade && apt-get -y autoremove"
+sudo /usr/local/bin/featheros-update-scan
+echo
+read -rp "Done. Press Enter to close."'

@@ -1,0 +1,22 @@
+#!/bin/bash
+CONF="$HOME/.config/featheros/appearance.conf"
+mkdir -p "$HOME/.config/featheros" "$HOME/.config/gtk-3.0"
+sacc=$(grep '^accent=' "$CONF" 2>/dev/null | cut -d= -f2)
+smode=$(grep '^mode=' "$CONF" 2>/dev/null | cut -d= -f2)
+ACC="${1:-${sacc:-#2E6F95}}"
+MODE="${2:-${smode:-light}}"
+[[ "$ACC" =~ ^#[0-9A-Fa-f]{6}$ ]] || { echo "Accent must look like #2E6F95"; exit 1; }
+[[ "$MODE" == dark || "$MODE" == light ]] || MODE=light
+printf '[appearance]\naccent=%s\nmode=%s\n' "$ACC" "$MODE" > "$CONF"
+cat > "$HOME/.config/gtk-3.0/gtk.css" <<CSS
+@define-color accent_color $ACC;
+@define-color theme_selected_bg_color $ACC;
+@define-color selected_bg_color $ACC;
+@define-color theme_selected_fg_color #ffffff;
+@define-color selected_fg_color #ffffff;
+.xfce4-panel.background { background-color: mix(#0b1218, $ACC, 0.28); color: #ffffff; }
+CSS
+if [ "$MODE" = dark ]; then T=Adwaita-dark; else T=Adwaita; fi
+xfconf-query -c xsettings -p /Net/ThemeName -n -t string -s HighContrast 2>/dev/null
+sleep 0.4
+xfconf-query -c xsettings -p /Net/ThemeName -n -t string -s "$T" 2>/dev/null

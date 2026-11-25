@@ -1,0 +1,6 @@
+[Desktop Entry]
+Type=Application
+Name=FeatherOS auto rotate
+Exec=featheros-rotate auto
+OnlyShowIn=XFCE;
+X-GNOME-Autostart-enabled=true

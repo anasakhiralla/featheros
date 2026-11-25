@@ -1,0 +1,21 @@
+#!/bin/bash
+mkdir -p "$HOME/.config/featheros" "$HOME/Desktop"
+xdg-user-dirs-update 2>/dev/null
+if grep -q 'boot=live' /proc/cmdline 2>/dev/null; then
+  cp -n /usr/share/featheros/install-featheros.desktop "$HOME/Desktop/" 2>/dev/null
+  chmod +x "$HOME/Desktop/install-featheros.desktop" 2>/dev/null
+fi
+if [ ! -f "$HOME/.config/featheros/.initialized" ]; then
+  sleep 3
+  featheros-wallpaper /usr/share/backgrounds/featheros/saturn-blue.svg
+  xfconf-query -c xfce4-desktop -p /desktop-icons/file-icons/show-home -n -t bool -s true
+  xfconf-query -c xfce4-desktop -p /desktop-icons/file-icons/show-trash -n -t bool -s true
+  xfconf-query -c xfce4-desktop -p /desktop-icons/file-icons/show-removable -n -t bool -s true
+  xfconf-query -c xfce4-desktop -p /desktop-icons/file-icons/show-filesystem -n -t bool -s false
+  xfconf-query -c xfce4-desktop -p /desktop-icons/icon-size -n -t uint -s 56
+  featheros-accent
+  touch "$HOME/.config/featheros/.initialized"
+else
+  featheros-accent
+fi
+/usr/local/bin/featheros-update-icon >/dev/null 2>&1

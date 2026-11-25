@@ -1,0 +1,139 @@
+#!/usr/bin/env python3
+import subprocess, threading
+import gi
+gi.require_version('Gtk', '3.0')
+from gi.repository import Gtk, GLib
+
+APPS = [
+    ('Internet', 'Thunderbird', 'thunderbird', 'Email and calendar', 'mail-send'),
+    ('Internet', 'Chromium', 'chromium', 'Another web browser', 'web-browser'),
+    ('Internet', 'Transmission', 'transmission-gtk', 'Torrent downloads', 'folder-download'),
+    ('Office', 'LibreOffice Writer', 'libreoffice-writer', 'Word processor (large)', 'x-office-document'),
+    ('Office', 'LibreOffice Calc', 'libreoffice-calc', 'Spreadsheets (large)', 'x-office-spreadsheet'),
+    ('Office', 'AbiWord', 'abiword', 'Light word processor', 'x-office-document'),
+    ('Office', 'Gnumeric', 'gnumeric', 'Light spreadsheets', 'x-office-spreadsheet'),
+    ('Media', 'VLC', 'vlc', 'Plays any video or music', 'vlc'),
+    ('Media', 'Audacious', 'audacious', 'Light music player', 'audio-x-generic'),
+    ('Media', 'Celluloid', 'celluloid', 'Simple video player', 'video-x-generic'),
+    ('Graphics', 'GIMP', 'gimp', 'Photo editor', 'gimp'),
+    ('Graphics', 'Inkscape', 'inkscape', 'Vector drawing', 'inkscape'),
+    ('Developer', 'Thonny', 'thonny', 'Beginner Python editor', 'applications-development'),
+    ('Developer', 'Meld', 'meld', 'Compare files and folders', 'meld'),
+    ('Developer', 'Docker', 'docker.io', 'Containers', 'applications-development'),
+    ('Developer', 'Java (JDK)', 'default-jdk', 'Java development kit', 'applications-development'),
+    ('Developer', 'Rust', 'cargo', 'Rust compiler and cargo', 'applications-development'),
+    ('Developer', 'Go', 'golang', 'Go compiler', 'applications-development'),
+    ('Developer', 'DB Browser for SQLite', 'sqlitebrowser', 'Look inside databases', 'applications-databases'),
+    ('Utilities', 'GParted', 'gparted', 'Disk partitions', 'gparted'),
+    ('Utilities', 'Timeshift', 'timeshift', 'System restore points', 'drive-harddisk'),
+    ('Utilities', 'Calculator', 'galculator', 'Calculator', 'accessories-calculator'),
+    ('Utilities', 'Flatpak', 'flatpak', 'Extra app source', 'system-software-install'),
+    ('Games', 'Chess', 'gnome-chess', 'Play chess', 'applications-games'),
+]
+CATS = ['All'] + sorted({a[0] for a in APPS})
+
+def installed(pkg):
+    r = subprocess.run(['dpkg-query', '-W', '-f=${Status}', pkg], capture_output=True, text=True)
+    return 'install ok installed' in r.stdout
+
+class Store(Gtk.Window):
+    def __init__(self):
+        super().__init__(title='Software center')
+        self.set_default_size(820, 520)
+        self.cat = 'All'
+        self.query = ''
+        root = Gtk.Box()
+        self.add(root)
+        side = Gtk.ListBox()
+        side.set_size_request(150, -1)
+        for c in CATS:
+            r = Gtk.ListBoxRow()
+            r.cat = c
+            l = Gtk.Label(label=c, xalign=0)
+            l.set_margin_top(10)
+            l.set_margin_bottom(10)
+            l.set_margin_start(12)
+            r.add(l)
+            side.add(r)
+        side.connect('row-selected', self.on_cat)
+        root.pack_start(side, False, False, 0)
+        right = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+        right.set_border_width(10)
+        top = Gtk.Box(spacing=8)
+        self.search = Gtk.SearchEntry()
+        self.search.set_placeholder_text('Search apps')
+        self.search.connect('search-changed', self.on_search)
+        top.pack_start(self.search, True, True, 0)
+        more = Gtk.Button(label='All Debian packages')
+        more.connect('clicked', lambda b: subprocess.Popen(['pkexec', 'synaptic']))
+        top.pack_start(more, False, False, 0)
+        right.pack_start(top, False, False, 0)
+        sc = Gtk.ScrolledWindow()
+        self.flow = Gtk.FlowBox()
+        self.flow.set_selection_mode(Gtk.SelectionMode.NONE)
+        self.flow.set_min_children_per_line(2)
+        self.flow.set_max_children_per_line(3)
+        self.flow.set_homogeneous(True)
+        sc.add(self.flow)
+        right.pack_start(sc, True, True, 0)
+        self.status = Gtk.Label(label='', xalign=0)
+        right.pack_start(self.status, False, False, 0)
+        root.pack_start(right, True, True, 0)
+        side.select_row(side.get_row_at_index(0))
+        self.connect('destroy', Gtk.main_quit)
+        self.show_all()
+
+    def on_cat(self, lb, row):
+        if row:
+            self.cat = row.cat
+            self.refill()
+
+    def on_search(self, e):
+        self.query = e.get_text().lower()
+        self.refill()
+
+    def refill(self):
+        for c in self.flow.get_children():
+            self.flow.remove(c)
+        for cat, name, pkg, desc, icon in APPS:
+            if self.cat != 'All' and cat != self.cat:
+                continue
+            if self.query and self.query not in (name + desc + pkg).lower():
+                continue
+            card = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
+            card.set_border_width(10)
+            img = Gtk.Image.new_from_icon_name(icon, Gtk.IconSize.DIALOG)
+            card.pack_start(img, False, False, 0)
+            n = Gtk.Label(label=name)
+            n.get_style_context().add_class('title')
+            card.pack_start(n, False, False, 0)
+            d = Gtk.Label(label=desc)
+            d.get_style_context().add_class('dim-label')
+            d.set_line_wrap(True)
+            card.pack_start(d, False, False, 0)
+            has = installed(pkg)
+            b = Gtk.Button(label='Remove' if has else 'Install')
+            b.set_size_request(-1, 40)
+            b.connect('clicked', self.act, pkg, has)
+            card.pack_start(b, False, False, 4)
+            self.flow.add(card)
+        self.flow.show_all()
+
+    def act(self, btn, pkg, has):
+        btn.set_sensitive(False)
+        btn.set_label('Working...')
+        self.status.set_text(('Removing ' if has else 'Installing ') + pkg + '. This can take a few minutes.')
+        def work():
+            cmd = ['pkexec', 'apt-get', '-y', 'remove' if has else 'install', pkg]
+            if not has:
+                subprocess.run(['pkexec', 'apt-get', 'update'], capture_output=True)
+            r = subprocess.run(cmd, capture_output=True, text=True)
+            GLib.idle_add(self.done, pkg, r.returncode == 0)
+        threading.Thread(target=work, daemon=True).start()
+
+    def done(self, pkg, ok):
+        self.status.set_text('Done: ' + pkg if ok else 'Something went wrong with ' + pkg + '. Check your internet and try again.')
+        self.refill()
+
+Store()
+Gtk.main()

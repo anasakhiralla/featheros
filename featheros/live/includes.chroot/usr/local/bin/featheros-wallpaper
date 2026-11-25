@@ -1,0 +1,16 @@
+#!/bin/bash
+F=$(readlink -f "${1:-}")
+[ -f "$F" ] || { echo "Usage: featheros-wallpaper picture.jpg [style]"; exit 1; }
+STYLE="${2:-5}"
+names="monitor0"
+for o in $(xrandr --query 2>/dev/null | awk '/ connected/{print $1}'); do names="$names monitor$o"; done
+for m in $names; do
+  xfconf-query -c xfce4-desktop -p /backdrop/screen0/$m/workspace0/last-image -n -t string -s "$F"
+  xfconf-query -c xfce4-desktop -p /backdrop/screen0/$m/workspace0/image-style -n -t int -s "$STYLE"
+  xfconf-query -c xfce4-desktop -p /backdrop/screen0/$m/workspace0/color-style -n -t int -s 0
+done
+for p in $(xfconf-query -c xfce4-desktop -l 2>/dev/null | grep 'last-image$'); do
+  xfconf-query -c xfce4-desktop -p "$p" -s "$F"
+done
+mkdir -p "$HOME/.config/featheros"
+echo "$F" > "$HOME/.config/featheros/wallpaper"

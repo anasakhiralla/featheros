@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=FeatherOS Settings
+Comment=Dock, wallpaper, colors, touch and notifications
+Exec=featheros-settings
+Icon=preferences-desktop
+Categories=Settings;
