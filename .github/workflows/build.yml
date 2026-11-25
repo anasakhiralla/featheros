@@ -1,4 +1,3 @@
-
 name: Build FeatherOS ISO
 on:
   workflow_dispatch:
@@ -14,11 +13,11 @@ jobs:
           df -h /
       - name: Build the ISO inside Debian 13
         run: |
-          docker run --rm --privileged -v "$PWD":/work -w /work debian:trixie bash build.sh
+          docker run --rm --privileged -v "$PWD":/work -w /work/featheros debian:trixie bash build.sh
       - name: Upload the ISO
         uses: actions/upload-artifact@v4
         with:
           name: featheros-iso
-          path: out/featheros-amd64.iso
+          path: featheros/out/featheros-amd64.iso
           retention-days: 7
           compression-level: 0
