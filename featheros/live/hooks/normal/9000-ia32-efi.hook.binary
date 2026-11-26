@@ -1,18 +1,21 @@
 #!/bin/sh
 # Adds 32-bit UEFI boot support (needed by Atom tablets such as the RCA Cambio)
 # to a 64-bit ISO, by putting bootia32.efi next to bootx64.efi in every EFI image.
+# live-build runs binary hooks from inside the ISO tree, so paths are found relative to "." here.
 set -e
+if [ -d ./binary ]; then ROOT=./binary; else ROOT=.; fi
+echo "ia32 hook: working in $(pwd), ISO tree is $ROOT"
 FOUND=""
-for IMG in binary/efi.img binary/boot/grub/efi.img binary/boot/efi.img; do
+for IMG in "$ROOT/efi.img" "$ROOT/boot/grub/efi.img" "$ROOT/boot/efi.img"; do
   [ -f "$IMG" ] && FOUND="$FOUND $IMG"
 done
 if [ -z "$FOUND" ]; then
   echo "ia32 hook: no efi.img found. Image files present:"
-  find binary -name '*.img'
+  find "$ROOT" -name '*.img'
   exit 1
 fi
 echo "ia32 hook: image files before patching:"
-find binary -name '*.img' -exec ls -l {} \;
+for IMG in $FOUND; do ls -l "$IMG"; done
 T=$(mktemp -d)
 mkdir -p "$T/emb"
 cat > "$T/emb/embed.cfg" <<'CFG'
@@ -33,13 +36,15 @@ for IMG in $FOUND; do
   cp "$T/bootia32.efi" "$BOOTDIR/bootia32.efi"
   KB=$(du -sk "$T/efi" | cut -f1)
   MB=$(( KB / 1024 + 12 ))
+  rm -f "$T/new.img"
   dd if=/dev/zero of="$T/new.img" bs=1M count=$MB status=none
   mkfs.vfat "$T/new.img" >/dev/null
   mcopy -s -i "$T/new.img" "$T"/efi/* ::/
   cp "$T/new.img" "$IMG"
   mdir -/ -b -i "$IMG" ::/ | grep -qi bootia32.efi || { echo "ia32 hook: bootia32.efi missing from $IMG"; exit 1; }
+  echo "ia32 hook: $IMG now contains bootia32.efi"
 done
-for D in $(find binary -maxdepth 2 -ipath 'binary/efi/boot' -type d); do
+for D in $(find "$ROOT" -maxdepth 2 -ipath "$ROOT/efi/boot" -type d); do
   cp "$T/bootia32.efi" "$D/bootia32.efi"
 done
 echo "ia32 hook: done"
