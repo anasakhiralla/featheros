@@ -1,0 +1,14 @@
+#!/bin/bash
+. /usr/local/bin/featheros-barlib
+[ "$(bar_get battery 1)" = 1 ] || { echo "<txt></txt>"; exit 0; }
+for d in /sys/class/power_supply/*; do
+  [ "$(cat "$d/type" 2>/dev/null)" = Battery ] || continue
+  cap=$(cat "$d/capacity" 2>/dev/null) || continue
+  st=$(cat "$d/status" 2>/dev/null)
+  mark=""; col="#ffffff"
+  case "$st" in Charging) mark=" ↑"; col="#9FE1CB";; esac
+  if [ "$st" != Charging ] && [ "$cap" -le 15 ] 2>/dev/null; then col="#F09595"; fi
+  printf "<txt><span foreground='%s' font_weight='bold'> %s%%%s </span></txt>\n<tool>Battery %s%% (%s). Tap for power settings.</tool>\n<txtclick>xfce4-power-manager-settings</txtclick>\n" "$col" "$cap" "$mark" "$cap" "${st:-unknown}"
+  exit 0
+done
+echo "<txt></txt>"

@@ -25,6 +25,9 @@ lb config \
   --bootappend-live "boot=live components quiet username=feather hostname=featheros locales=en_US.UTF-8 keyboard-layouts=us timezone=Africa/Cairo"
 cp -r "$SRC"/live/. config/
 chmod -R +x config/hooks || true
+# the repo stores this as "dotconfig" because GitHub web upload drops hidden folders
+if [ -d config/includes.chroot/etc/skel/dotconfig ]; then mv config/includes.chroot/etc/skel/dotconfig config/includes.chroot/etc/skel/.config; fi
+test -f config/includes.chroot/etc/skel/.config/xfce4/xfconf/xfce-perchannel-xml/xfce4-panel.xml || { echo "SKEL CHECK FAILED: panel config missing"; exit 1; }
 lb build 2>&1 | tee build.log
 mkdir -p "$SRC/out"
 cp live-image-amd64.hybrid.iso "$SRC/out/featheros-amd64.iso"

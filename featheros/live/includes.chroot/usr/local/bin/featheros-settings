@@ -11,7 +11,7 @@ ACCENTS = [('Blue', '#2E6F95'), ('Teal', '#0F6E56'), ('Purple', '#534AB7'), ('Or
            ('Pink', '#993556'), ('Red', '#A32D2D'), ('Green', '#3B6D11')]
 
 def ini(name):
-    c = configparser.ConfigParser()
+    c = configparser.ConfigParser(interpolation=None)
     c.read(os.path.join(CFG, name))
     return c
 
@@ -65,6 +65,7 @@ class Settings(Gtk.Window):
         stack.add_titled(self.appearance(), 'a', 'Appearance')
         stack.add_titled(self.dock(), 'd', 'Dock')
         stack.add_titled(self.wallpaper(), 'w', 'Wallpaper')
+        stack.add_titled(self.bar(), 'b', 'Bottom bar')
         stack.add_titled(self.touch(), 't', 'Touch and screen')
         stack.add_titled(self.notes(), 'n', 'Notifications')
         self.connect('destroy', Gtk.main_quit)
@@ -179,16 +180,62 @@ class Settings(Gtk.Window):
         p.pack_start(row('Use your own JPG or PNG', fc), False, False, 0)
         return p
 
+    def bar(self):
+        c = ini('bar.conf')
+        if 'bar' not in c:
+            c['bar'] = {'battery': '1', 'ram': '1', 'clock': '24', 'date': '0',
+                        'saturn_text': '-(O)-', 'saturn_color': '#FAC775'}
+        self.bcfg = c
+        b = c['bar']
+        p = page('Bottom bar')
+        for key, label in (('battery', 'Show battery percentage'), ('ram', 'Show RAM meter'), ('date', 'Show the date next to the clock')):
+            sw = Gtk.Switch()
+            sw.set_active(b.get(key, '1') == '1')
+            sw.connect('state-set', lambda w, st, k=key: (self.bar_set(k, '1' if st else '0'), False)[1])
+            p.pack_start(row(label, sw), False, False, 0)
+        p.pack_start(row('Clock', radios([('24', '24-hour'), ('12', '12-hour')], b.get('clock', '24'), lambda v: self.bar_set('clock', v))), False, False, 0)
+        l = Gtk.Label(xalign=0)
+        l.set_markup('<b>Saturn button</b>')
+        p.pack_start(l, False, False, 6)
+        self.ent = Gtk.Entry()
+        self.ent.set_text(b.get('saturn_text', '-(O)-'))
+        self.ent.set_max_length(12)
+        self.ent.connect('changed', lambda w: self.bar_set('saturn_text', w.get_text()))
+        p.pack_start(row('Text on the button', self.ent), False, False, 0)
+        h = Gtk.Box(spacing=6)
+        for t in ('-(O)-', '~(O)~', '(@)', '<O>', '(O)', '[O]'):
+            bt = Gtk.Button(label=t)
+            bt.set_size_request(70, 40)
+            bt.connect('clicked', lambda w, t=t: self.ent.set_text(t))
+            h.pack_start(bt, False, False, 0)
+        p.pack_start(h, False, False, 0)
+        cb = Gtk.ColorButton()
+        rgba = Gdk.RGBA()
+        rgba.parse(b.get('saturn_color', '#FAC775'))
+        cb.set_rgba(rgba)
+        cb.connect('color-set', lambda w: self.bar_set('saturn_color', '#%02X%02X%02X' % tuple(int(x * 255) for x in (w.get_rgba().red, w.get_rgba().green, w.get_rgba().blue))))
+        p.pack_start(row('Button color', cb), False, False, 0)
+        return p
+
+    def bar_set(self, key, val):
+        self.bcfg['bar'][key] = val
+        save('bar.conf', self.bcfg)
+        sh('featheros-bar-apply')
+
     def touch(self):
         c = ini('touch.conf')
         if 'longpress' not in c:
-            c['longpress'] = {'enabled': '1', 'delay': '0.6', 'skip_classes': 'firefox-esr,Firefox,firefox'}
+            c['longpress'] = {'enabled': '1', 'delay': '0.6', 'mode': 'release', 'skip_classes': 'firefox-esr,Firefox,firefox'}
         self.tc = c
         p = page('Long press as right click')
         sw = Gtk.Switch()
         sw.set_active(c['longpress'].get('enabled', '1') == '1')
         sw.connect('state-set', self.on_lp)
         p.pack_start(row('Hold a finger to right click', sw), False, False, 0)
+        md = Gtk.Switch()
+        md.set_active(c['longpress'].get('mode', 'release') == 'release')
+        md.connect('state-set', self.on_mode)
+        p.pack_start(row('Open the menu when I lift my finger', md), False, False, 0)
         sc = Gtk.Scale.new_with_range(Gtk.Orientation.HORIZONTAL, 0.3, 1.5, 0.1)
         sc.set_value(float(c['longpress'].get('delay', '0.6')))
         sc.set_size_request(260, -1)
@@ -204,6 +251,10 @@ class Settings(Gtk.Window):
             b.connect('clicked', lambda w, k=key: sh('featheros-rotate', k))
             h.pack_start(b, False, False, 0)
         p.pack_start(h, False, False, 0)
+        mt = Gtk.Button(label='Test multi-touch')
+        mt.set_size_request(-1, 40)
+        mt.connect('clicked', lambda w: sh('featheros-touch-test'))
+        p.pack_start(mt, False, False, 6)
         cal = Gtk.Button(label='Calibrate touch screen')
         cal.set_size_request(-1, 40)
         cal.connect('clicked', lambda w: sh('xinput_calibrator'))
@@ -212,6 +263,11 @@ class Settings(Gtk.Window):
 
     def on_lp(self, w, state):
         self.tc['longpress']['enabled'] = '1' if state else '0'
+        save('touch.conf', self.tc)
+        return False
+
+    def on_mode(self, w, state):
+        self.tc['longpress']['mode'] = 'release' if state else 'hold'
         save('touch.conf', self.tc)
         return False
 

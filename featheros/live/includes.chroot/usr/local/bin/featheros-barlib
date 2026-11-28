@@ -1,0 +1,4 @@
+#!/bin/bash
+# sourced by the bar scripts: bar_get KEY DEFAULT
+BAR_CONF="$HOME/.config/featheros/bar.conf"
+bar_get(){ local v; v=$(grep "^$1=" "$BAR_CONF" 2>/dev/null | head -1 | cut -d= -f2-); echo "${v:-$2}"; }

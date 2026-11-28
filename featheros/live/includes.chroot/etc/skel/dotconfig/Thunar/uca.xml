@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<actions>
+<action>
+  <icon>preferences-desktop-wallpaper</icon>
+  <name>Set as wallpaper</name>
+  <unique-id>1700000000001</unique-id>
+  <command>featheros-wallpaper %f</command>
+  <description>Use this picture as the desktop wallpaper</description>
+  <patterns>*.jpg;*.jpeg;*.JPG;*.JPEG;*.png;*.PNG;*.webp;*.svg</patterns>
+  <image-files/>
+</action>
+<action>
+  <icon>utilities-terminal</icon>
+  <name>Open terminal here</name>
+  <unique-id>1700000000002</unique-id>
+  <command>xfce4-terminal --working-directory=%f</command>
+  <description>Open a terminal in this folder</description>
+  <patterns>*</patterns>
+  <directories/>
+</action>
+</actions>

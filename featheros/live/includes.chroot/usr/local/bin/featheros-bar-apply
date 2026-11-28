@@ -1,0 +1,9 @@
+#!/bin/bash
+. /usr/local/bin/featheros-barlib
+clock=$(bar_get clock 24); date=$(bar_get date 0)
+if [ "$clock" = 12 ]; then TF='%I:%M %p'; else TF='%H:%M'; fi
+if [ "$date" = 1 ]; then L=3; else L=1; fi
+P=/plugins/plugin-10
+xfconf-query -c xfce4-panel -p $P/digital-time-format -n -t string -s "$TF"
+xfconf-query -c xfce4-panel -p $P/digital-date-format -n -t string -s '%a %d %b'
+xfconf-query -c xfce4-panel -p $P/digital-layout -n -t uint -s "$L"

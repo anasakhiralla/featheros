@@ -15,8 +15,14 @@ cat > "$HOME/.config/gtk-3.0/gtk.css" <<CSS
 @define-color theme_selected_fg_color #ffffff;
 @define-color selected_fg_color #ffffff;
 .xfce4-panel.background { background-color: mix(#0b1218, $ACC, 0.28); color: #ffffff; }
+button { min-height: 34px; border-radius: 8px; padding: 4px 12px; }
+entry, spinbutton { min-height: 34px; border-radius: 8px; }
+menuitem { min-height: 38px; }
+scale trough { min-height: 8px; border-radius: 4px; }
+scale slider { min-height: 24px; min-width: 24px; border-radius: 12px; }
 CSS
-if [ "$MODE" = dark ]; then T=Adwaita-dark; else T=Adwaita; fi
+if [ "$MODE" = dark ]; then T=Adwaita-dark; ICONS=Papirus-Dark; else T=Adwaita; ICONS=Papirus; fi
+xfconf-query -c xsettings -p /Net/IconThemeName -n -t string -s "$ICONS" 2>/dev/null
 xfconf-query -c xsettings -p /Net/ThemeName -n -t string -s HighContrast 2>/dev/null
 sleep 0.4
 xfconf-query -c xsettings -p /Net/ThemeName -n -t string -s "$T" 2>/dev/null

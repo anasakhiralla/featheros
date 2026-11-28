@@ -5,4 +5,6 @@ gtk-update-icon-cache -f /usr/share/icons/hicolor 2>/dev/null || true
 dconf update 2>/dev/null || true
 systemctl enable featheros-updates.timer 2>/dev/null || true
 systemctl enable NetworkManager bluetooth zramswap 2>/dev/null || true
+systemctl enable touchegg.service 2>/dev/null || true
+systemctl --global enable pipewire.socket pipewire-pulse.socket wireplumber.service 2>/dev/null || true
 sed -i 's/^PRETTY_NAME=.*/PRETTY_NAME="FeatherOS (Debian 13)"/' /etc/os-release 2>/dev/null || true

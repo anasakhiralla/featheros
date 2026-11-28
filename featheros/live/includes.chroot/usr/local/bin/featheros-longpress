@@ -1,10 +1,16 @@
 #!/usr/bin/env python3
+# Long press = right click.
+# mode=release (default): hold still ~0.6 s, the menu opens when you lift your finger and stays open.
+# mode=hold: the menu opens as soon as the hold time passes (it may close when you lift).
 import os, time, select, subprocess, configparser
 from evdev import InputDevice, ecodes, list_devices
 
 CONF = os.path.expanduser('~/.config/featheros/touch.conf')
+_cache = {'t': 0, 'v': (True, 0.6, [], 'release')}
 
 def load():
+    if time.time() - _cache['t'] < 2:
+        return _cache['v']
     c = configparser.ConfigParser()
     c.read(CONF)
     s = c['longpress'] if 'longpress' in c else {}
@@ -13,7 +19,10 @@ def load():
     except ValueError:
         delay = 0.6
     skip = [x.strip().lower() for x in s.get('skip_classes', '').split(',') if x.strip()]
-    return s.get('enabled', '1') == '1', delay, skip
+    mode = s.get('mode', 'release')
+    _cache['t'] = time.time()
+    _cache['v'] = (s.get('enabled', '1') == '1', delay, skip, mode)
+    return _cache['v']
 
 def active_class():
     try:
@@ -41,16 +50,21 @@ def find_touch():
 class State:
     def __init__(self, rng):
         self.fingers = 0
-        self.start = None
-        self.x0 = self.y0 = None
-        self.x = self.y = None
-        self.fired = False
         self.thresh = rng * 0.02
+        self.reset()
 
     def reset(self):
         self.start = None
         self.x0 = self.y0 = None
         self.fired = False
+        self.armed = False
+
+def right_click_now():
+    subprocess.run(['xdotool', 'mouseup', '1', 'click', '3'])
+
+def right_click_after_lift():
+    time.sleep(0.08)
+    subprocess.run(['xdotool', 'click', '3'])
 
 def main():
     devices = {}
@@ -60,7 +74,7 @@ def main():
         if not devices:
             time.sleep(10)
     while True:
-        enabled, delay, skip = load()
+        enabled, delay, skip, mode = load()
         r, _, _ = select.select([d for d, _ in devices.values()], [], [], 0.05)
         for dev in r:
             st = devices[dev.fd][1]
@@ -69,40 +83,46 @@ def main():
             except OSError:
                 return
             for e in events:
-                if e.type == ecodes.EV_ABS:
-                    if e.code == ecodes.ABS_MT_TRACKING_ID:
-                        if e.value == -1:
-                            st.fingers = max(0, st.fingers - 1)
-                            if st.fingers == 0:
-                                st.reset()
+                if e.type != ecodes.EV_ABS:
+                    continue
+                if e.code == ecodes.ABS_MT_TRACKING_ID:
+                    if e.value == -1:
+                        st.fingers = max(0, st.fingers - 1)
+                        if st.fingers == 0:
+                            if enabled and st.armed and active_class() not in skip:
+                                right_click_after_lift()
+                            st.reset()
+                    else:
+                        st.fingers += 1
+                        if st.fingers == 1:
+                            st.reset()
+                            st.start = time.time()
                         else:
-                            st.fingers += 1
-                            if st.fingers == 1:
-                                st.start = time.time()
-                                st.fired = False
-                                st.x0 = st.y0 = None
-                            else:
-                                st.start = None
-                    elif e.code == ecodes.ABS_MT_POSITION_X:
-                        st.x = e.value
-                        if st.x0 is None:
-                            st.x0 = e.value
-                        elif abs(e.value - st.x0) > st.thresh:
                             st.start = None
-                    elif e.code == ecodes.ABS_MT_POSITION_Y:
-                        st.y = e.value
-                        if st.y0 is None:
-                            st.y0 = e.value
-                        elif abs(e.value - st.y0) > st.thresh:
-                            st.start = None
+                            st.armed = False
+                elif e.code == ecodes.ABS_MT_POSITION_X:
+                    if st.x0 is None:
+                        st.x0 = e.value
+                    elif abs(e.value - st.x0) > st.thresh:
+                        st.start = None
+                        st.armed = False
+                elif e.code == ecodes.ABS_MT_POSITION_Y:
+                    if st.y0 is None:
+                        st.y0 = e.value
+                    elif abs(e.value - st.y0) > st.thresh:
+                        st.start = None
+                        st.armed = False
         if not enabled:
             continue
         now = time.time()
         for _, st in devices.values():
             if st.start and not st.fired and st.fingers == 1 and now - st.start >= delay:
                 st.fired = True
-                if active_class() not in skip:
-                    subprocess.run(['xdotool', 'mouseup', '1', 'click', '3'])
+                if mode == 'hold':
+                    if active_class() not in skip:
+                        right_click_now()
+                else:
+                    st.armed = True
 
 if __name__ == '__main__':
     main()

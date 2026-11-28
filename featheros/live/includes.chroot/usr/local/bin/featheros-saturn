@@ -1,0 +1,7 @@
+#!/bin/bash
+. /usr/local/bin/featheros-barlib
+t=$(bar_get saturn_text '-(O)-')
+c=$(bar_get saturn_color '#FAC775')
+t=$(printf '%s' "$t" | sed 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g')
+printf "<txt><span foreground='%s' font_family='monospace' font_weight='bold' font_size='x-large'> %s </span></txt>\n" "$c" "$t"
+printf '<txtclick>featheros-search</txtclick>\n<tool>Search apps, files and the web (Super + Space)</tool>\n'

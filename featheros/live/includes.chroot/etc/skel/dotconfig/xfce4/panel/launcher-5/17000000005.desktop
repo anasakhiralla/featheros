@@ -1,0 +1,7 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=On-screen keyboard
+Exec=onboard
+Icon=input-keyboard
+Terminal=false

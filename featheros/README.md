@@ -50,3 +50,14 @@ Double-click "Install FeatherOS" on the desktop. Choose language, keyboard, "Era
 - `featheros-wallpaper picture.jpg`
 - `featheros-accent "#2E6F95" light|dark`
 - Touch settings: ~/.config/featheros/touch.conf
+
+## Note about uploading to GitHub
+GitHub's web upload skips hidden folders (names starting with a dot). That is why the desktop
+settings live in `live/includes.chroot/etc/skel/dotconfig` and build.sh renames it to `.config`.
+The only hidden folder in this project is `.github`, which you create by hand on the website.
+
+## Shortcuts and touch
+- Super (Windows key) + Space opens the universal search.
+- Hold a finger still for about 0.6 s, lift it, and the right-click menu opens.
+- Three-finger swipe: up = search, down = show desktop, left/right = switch window (Touchegg).
+- Settings > Touch and screen has a multi-touch test.
